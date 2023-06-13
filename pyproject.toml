@@ -1,0 +1,29 @@
+[project]
+name = "ntag-mfrc522"
+authors = [{ name = "Marc Freudenberg", email = "freudenbergmarc@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.7"
+dynamic = ["version"]
+dependencies = ["RPi.GPIO", "spidev", "ndeflib"]
+
+[project.urls]
+repository = "https://github.com/washed/ntag-mfrc522"
+
+[project.optional-dependencies]
+dev = [
+  "toml~=0.10.2",
+  "twine==1.13.0",
+  "black>=23.3.0",
+  "usort>=1.0.7",
+  "ufmt>=2.1.0",
+]
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=58", "setuptools_scm>=6.2", "wheel"]
+
+[tool]
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+where = ["."]

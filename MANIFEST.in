@@ -1,0 +1,4 @@
+exclude Makefile
+exclude .gitignore
+exclude MANIFEST.in
+prune .github
