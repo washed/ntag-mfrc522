@@ -1,5 +1,5 @@
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import gpiod
 import spidev
@@ -12,7 +12,6 @@ TODO
 * use interrupt pin
 * don't use magic numbers for register config
 * logging
-* use bytearray/bytes instead of List[int]
 """
 
 
@@ -65,12 +64,11 @@ class MFRC522:
     def _reset(self):
         self._write(constants.CommandReg, constants.PCD_RESETPHASE)
 
-    def _write(self, addr: int, val: int) -> None:
-        val = self.spi.xfer2([(addr << 1) & 0x7E, val])
+    def _write(self, addr: int, val: int) -> int:
+        return self.spi.xfer2([(addr << 1) & 0x7E, val])
 
     def _read(self, addr: int) -> int:
-        val = self.spi.xfer2([((addr << 1) & 0x7E) | 0x80, 0])
-        return val[1]
+        return self.spi.xfer2([((addr << 1) & 0x7E) | 0x80, 0])[1]
 
     def _close(self) -> None:
         self.spi.close()
@@ -92,31 +90,36 @@ class MFRC522:
     def _antenna_off(self) -> None:
         self._clear_bit_mask(constants.TxControlReg, 0x03)
 
-    def _check_bcc(self, data: List[int]) -> bool:
+    def _check_bcc(self, data: bytes) -> bool:
         checksum = 0
         for datum in data[:-1]:
             checksum = checksum ^ datum
         return checksum == data[-1]
 
-    def _combine_uid(self, uid_per_level: List[List[int]]) -> List[int]:
+    def _combine_uid(self, uid_per_level: List[bytes]) -> bytes:
         if len(uid_per_level) == 1:
-            return uid_per_level[0][:4]
+            return bytes(uid_per_level[0][:4])
         elif len(uid_per_level) == 2:
-            return [*uid_per_level[0][1:4], *uid_per_level[1][:4]]
+            return bytes([*uid_per_level[0][1:4], *uid_per_level[1][:4]])
         elif len(uid_per_level) == 3:
-            return [
-                *uid_per_level[0][1:4],
-                *uid_per_level[1][1:4],
-                *uid_per_level[2][:4],
-            ]
+            return bytes(
+                [
+                    *uid_per_level[0][1:4],
+                    *uid_per_level[1][1:4],
+                    *uid_per_level[2][:4],
+                ]
+            )
 
         raise RuntimeError
 
-    def _append_crc(self, data: List[int]) -> List[int]:
+    def _append_crc(self, data: Union[bytearray, List[int]]) -> bytes:
+        if isinstance(data, list):
+            data = bytearray(data)
+
         data.extend(self._calculate_crc(data))
         return data
 
-    def _calculate_crc(self, data: List[int]) -> List[int]:
+    def _calculate_crc(self, data: bytes) -> bytes:
         self._clear_bit_mask(constants.DivIrqReg, 0x04)
         self._set_bit_mask(constants.FIFOLevelReg, 0x80)
 
@@ -132,18 +135,20 @@ class MFRC522:
             if not ((i != 0) and not (n & 0x04)):
                 break
 
-        return [
-            self._read(constants.CRCResultRegL),
-            self._read(constants.CRCResultRegM),
-        ]
+        return bytes(
+            [
+                self._read(constants.CRCResultRegL),
+                self._read(constants.CRCResultRegM),
+            ]
+        )
 
     def _stop_crypto1(self):
         self._clear_bit_mask(constants.Status2Reg, 0x08)
 
-    def _to_card(self, command: int, send_data: List[int]) -> Tuple[List[int], int]:
-        back_data = []
+    def _to_card(
+        self, command: int, send_data: Union[bytes, List[int]]
+    ) -> Tuple[bytes, int]:
         back_len = 0
-        status = constants.MI_ERR
         irq_en = 0x00
         wait_irq = 0x00
         last_bits = None
@@ -182,10 +187,8 @@ class MFRC522:
         if i != 0:
             error_reg = self._read(constants.ErrorReg)
             if (error_reg & 0x1B) == 0x00:
-                status = constants.MI_OK
-
                 if n & irq_en & 0x01:
-                    status = constants.MI_NOTAGERR
+                    raise RuntimeError
 
                 if command == constants.PCD_TRANSCEIVE:
                     n = self._read(constants.FIFOLevelReg)
@@ -200,15 +203,15 @@ class MFRC522:
                     if n > constants.MAX_LEN:
                         n = constants.MAX_LEN
 
-                    for i in range(n):
-                        back_data.append(self._read(constants.FIFODataReg))
+                    back_data = bytes(
+                        self._read(constants.FIFODataReg) for _ in range(n)
+                    )
+
+                    return back_data, back_len
             else:
-                status = constants.MI_ERR
+                raise RuntimeError
 
-        if status != constants.MI_OK:
-            raise RuntimeError
-
-        return (back_data, back_len)
+        raise RuntimeError
 
     def request_tag(self) -> int:
         self._write(constants.BitFramingReg, 0x07)
@@ -222,9 +225,9 @@ class MFRC522:
 
         return back_bits
 
-    def select_tag(self) -> List[int]:
+    def select_tag(self) -> bytes:
         # level 1 and 2 supported for now
-        uid_per_level: List[List[int]] = []
+        uid_per_level: List[bytes] = []
         for level in range(1, 3, 1):
             if level == 1:
                 select_cmd = constants.PICC_SElECTTAG
@@ -269,7 +272,7 @@ class MFRC522:
 
         raise RuntimeError
 
-    def read_block(self, block_addr: int) -> List[int]:
+    def read_block(self, block_addr: int) -> bytes:
         recv_data = self._append_crc([constants.PICC_READ, block_addr])
         back_data, _back_len = self._to_card(constants.PCD_TRANSCEIVE, recv_data)
 
