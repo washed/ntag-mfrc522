@@ -36,16 +36,13 @@ class MFRC522:
         level = logging.getLevelName(log_level)
         self.logger.setLevel(level)
 
-        line = gpiod.find_line(pin_rst)
-        chip = line.get_chip()
-        lines = chip.get_line(line.offset)
+        line_ref = gpiod.find_line(pin_rst)
+        chip = line_ref.get_chip()
+        self._reset_pin_line = chip.get_line(line_ref.offset)
 
         config = gpiod.line_request()
-        config.consumer = "Application"
         config.request_type = gpiod.line_request.DIRECTION_OUTPUT
-        lines.request(config=config, default_val=1)
-
-        self._reset_pin_line = lines
+        self._reset_pin_line.request(config=config, default_val=1)
 
         # TODO: do irq pin config here
 
@@ -78,8 +75,7 @@ class MFRC522:
 
     def _close(self) -> None:
         self.spi.close()
-        # GPIO.cleanup()
-        self._reset_pin_line.reset()
+        self._reset_pin_line.release()
 
     def _set_bit_mask(self, reg: int, mask: int) -> None:
         tmp = self._read(reg)
