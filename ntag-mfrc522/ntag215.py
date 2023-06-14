@@ -1,12 +1,14 @@
 import io
-import subprocess
+
+# import subprocess
 from time import sleep
-from urllib.parse import urlparse
+from typing import List
+
+# from urllib.parse import urlparse
 
 import mfrc522
 import more_itertools
 import ndef
-from constants import MI_OK
 
 
 def get_ndef_partition(data: bytes) -> bytes:
@@ -20,7 +22,7 @@ def prepend_ndef_partition_header(data: bytes) -> bytes:
     return bytearray([0x03, len(data)]) + data
 
 
-def to_hex_string(numbers):
+def to_hex_string(numbers: List[int]):
     return ":".join(f"{i:02X}" for i in numbers)
 
 
@@ -30,7 +32,7 @@ class NTag215:
     PAGE_SIZE_BYTES = 4
     BLOCK_SIZE_BYTES = 16
     PAGE_COUNT = 135
-    BLOCK_COUNT = PAGE_COUNT * PAGE_SIZE_BYTES / BLOCK_SIZE_BYTES
+    BLOCK_COUNT = PAGE_COUNT * PAGE_SIZE_BYTES // BLOCK_SIZE_BYTES
 
     _memory: bytearray = bytearray()
 
@@ -80,16 +82,12 @@ class NTag215:
         return self._memory[self.USER_MEMORY_START : self.USER_MEMORY_END + 1]
 
     def __init__(self):
+        super().__init__()
         self.mfrc522 = mfrc522.MFRC522()
 
     def _read_no_block(self):
-        (status, TagType) = self.mfrc522.request_tag()
-        if status != MI_OK:
-            raise RuntimeError
-
-        (status, uid) = self.mfrc522.select_tag()
-        if status != MI_OK:
-            raise RuntimeError
+        _tag_type = self.mfrc522.request_tag()
+        uid = self.mfrc522.select_tag()
 
         print("uid: ", to_hex_string(uid))
 
@@ -112,31 +110,26 @@ class NTag215:
     #
     #     subprocess.run(["spotify_player", "playback", "start", "context", "--id", context_id, context_type])
 
-    def _write_no_block(self, text):
-        (status, TagType) = self.mfrc522.request_tag()
-        if status != MI_OK:
-            return None, None
+    def _write_no_block(self, text: str):
+        _tag_type = self.mfrc522.request_tag()
 
-        (status, uid) = self.mfrc522.select_tag()
-        if status != MI_OK:
-            return None, None
+        uid = self.mfrc522.select_tag()
 
-        if status == MI_OK:
-            record = ndef.TextRecord(text, "en")
+        record = ndef.TextRecord(text, "en")
 
-            stream = io.BytesIO()
-            encoder = ndef.message_encoder([record], stream)
-            for _ in encoder:
-                pass
+        stream = io.BytesIO()
+        encoder = ndef.message_encoder([record], stream)
+        for _ in encoder:
+            pass
 
-            octets = stream.getvalue()
-            octets = prepend_ndef_partition_header(octets)
-            print("octets: ", octets)
-            for i, chunk in enumerate(more_itertools.chunked(octets, 4)):
-                if len(chunk) < 4:
-                    chunk += [0] * (4 - len(chunk))
-                print(i, chunk)
-                self.mfrc522.write_block(4 + i, chunk)
+        octets = stream.getvalue()
+        octets = prepend_ndef_partition_header(octets)
+        print("octets: ", octets)
+        for i, chunk in enumerate(more_itertools.chunked(octets, 4)):
+            if len(chunk) < 4:
+                chunk += [0] * (4 - len(chunk))
+            print(i, chunk)
+            self.mfrc522.write_block(4 + i, chunk)
 
         return uid, octets
 
@@ -148,7 +141,7 @@ class NTag215:
             except:
                 sleep(0.2)
 
-    def write(self, text):
+    def write(self, text: str):
         id, text_in = self._write_no_block(text)
         while not id:
             id, text_in = self._write_no_block(text)

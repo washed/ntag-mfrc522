@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import constants
 
@@ -9,7 +9,6 @@ import spidev
 """
 TODO
 
-* use exceptions instead of error returns
 * use interrupt pin
 * don't use magic numbers for register config
 * logging
@@ -113,52 +112,58 @@ class MFRC522:
 
         raise RuntimeError
 
-    def _calculate_crc(self, pIndata: List[int]) -> List[int]:
+    def _append_crc(self, data: List[int]) -> List[int]:
+        data.extend(self._calculate_crc(data))
+        return data
+
+    def _calculate_crc(self, data: List[int]) -> List[int]:
         self._clear_bit_mask(constants.DivIrqReg, 0x04)
         self._set_bit_mask(constants.FIFOLevelReg, 0x80)
 
-        for i in range(len(pIndata)):
-            self._write(constants.FIFODataReg, pIndata[i])
+        for i in range(len(data)):
+            self._write(constants.FIFODataReg, data[i])
 
         self._write(constants.CommandReg, constants.PCD_CALCCRC)
         i = 0xFF
+
         while True:
             n = self._read(constants.DivIrqReg)
             i -= 1
             if not ((i != 0) and not (n & 0x04)):
                 break
-        pOutData = []
-        pOutData.append(self._read(constants.CRCResultRegL))
-        pOutData.append(self._read(constants.CRCResultRegM))
-        return pOutData
+
+        return [
+            self._read(constants.CRCResultRegL),
+            self._read(constants.CRCResultRegM),
+        ]
 
     def _stop_crypto1(self):
         self._clear_bit_mask(constants.Status2Reg, 0x08)
 
-    def _to_card(self, command: int, sendData: List[int]) -> Tuple[int, List[int], int]:
-        backData = []
-        backLen = 0
+    def _to_card(self, command: int, send_data: List[int]) -> Tuple[List[int], int]:
+        back_data = []
+        back_len = 0
         status = constants.MI_ERR
-        irqEn = 0x00
-        waitIRq = 0x00
-        lastBits = None
+        irq_en = 0x00
+        wait_irq = 0x00
+        last_bits = None
         n = 0
 
         if command == constants.PCD_AUTHENT:
-            irqEn = 0x12
-            waitIRq = 0x10
+            irq_en = 0x12
+            wait_irq = 0x10
         if command == constants.PCD_TRANSCEIVE:
-            irqEn = 0x77
-            waitIRq = 0x30
+            irq_en = 0x77
+            wait_irq = 0x30
 
-        self._write(constants.CommIEnReg, irqEn | 0x80)
+        self._write(constants.CommIEnReg, irq_en | 0x80)
         self._clear_bit_mask(constants.CommIrqReg, 0x80)
         self._set_bit_mask(constants.FIFOLevelReg, 0x80)
 
         self._write(constants.CommandReg, constants.PCD_IDLE)
 
-        for i in range(len(sendData)):
-            self._write(constants.FIFODataReg, sendData[i])
+        for i in range(len(send_data)):
+            self._write(constants.FIFODataReg, send_data[i])
 
         self._write(constants.CommandReg, command)
 
@@ -169,7 +174,7 @@ class MFRC522:
         while True:
             n = self._read(constants.CommIrqReg)
             i -= 1
-            if ~((i != 0) and ~(n & 0x01) and ~(n & waitIRq)):
+            if ~((i != 0) and ~(n & 0x01) and ~(n & wait_irq)):
                 break
 
         self._clear_bit_mask(constants.BitFramingReg, 0x80)
@@ -179,16 +184,16 @@ class MFRC522:
             if (error_reg & 0x1B) == 0x00:
                 status = constants.MI_OK
 
-                if n & irqEn & 0x01:
+                if n & irq_en & 0x01:
                     status = constants.MI_NOTAGERR
 
                 if command == constants.PCD_TRANSCEIVE:
                     n = self._read(constants.FIFOLevelReg)
-                    lastBits = self._read(constants.ControlReg) & 0x07
-                    if lastBits != 0:
-                        backLen = (n - 1) * 8 + lastBits
+                    last_bits = self._read(constants.ControlReg) & 0x07
+                    if last_bits != 0:
+                        back_len = (n - 1) * 8 + last_bits
                     else:
-                        backLen = n * 8
+                        back_len = n * 8
 
                     if n == 0:
                         n = 1
@@ -196,28 +201,28 @@ class MFRC522:
                         n = constants.MAX_LEN
 
                     for i in range(n):
-                        backData.append(self._read(constants.FIFODataReg))
+                        back_data.append(self._read(constants.FIFODataReg))
             else:
                 status = constants.MI_ERR
 
-        return (status, backData, backLen)
+        if status != constants.MI_OK:
+            raise RuntimeError
 
-    def request_tag(self) -> Tuple[int, int]:
-        status = None
-        backBits = None
-        TagType = []
+        return (back_data, back_len)
 
+    def request_tag(self) -> int:
         self._write(constants.BitFramingReg, 0x07)
+        _back_data, back_bits = self._to_card(
+            constants.PCD_TRANSCEIVE,
+            [constants.PICC_REQIDL],
+        )
 
-        TagType.append(constants.PICC_REQIDL)
-        (status, _backData, backBits) = self._to_card(constants.PCD_TRANSCEIVE, TagType)
+        if back_bits != 0x10:
+            raise RuntimeError
 
-        if (status != constants.MI_OK) | (backBits != 0x10):
-            status = constants.MI_ERR
+        return back_bits
 
-        return (status, backBits)
-
-    def select_tag(self) -> Tuple[int, Optional[List[int]]]:
+    def select_tag(self) -> List[int]:
         # level 1 and 2 supported for now
         uid_per_level: List[List[int]] = []
         for level in range(1, 3, 1):
@@ -232,75 +237,48 @@ class MFRC522:
                 self._write(constants.BitFramingReg, 0x00)
 
             # get part of UID of current cascade level
-            payload = [select_cmd, 0x20]
-            (status, backData, _backBits) = self._to_card(
-                constants.PCD_TRANSCEIVE, payload
+            back_data, _back_bits = self._to_card(
+                constants.PCD_TRANSCEIVE, [select_cmd, 0x20]
             )
 
-            if status != constants.MI_OK:
-                return (constants.MI_ERR, None)
+            if len(back_data) != 5:
+                raise RuntimeError
 
-            if len(backData) != 5:
-                return (constants.MI_ERR, None)
+            if not self._check_bcc(back_data):
+                raise RuntimeError
 
-            if not self._check_bcc(backData):
-                return (constants.MI_ERR, None)
-
-            uid_per_level.append(backData)
+            uid_per_level.append(back_data)
 
             # attempt to select this UID
-            payload = [select_cmd, 0x70, *backData]
-            crc = self._calculate_crc(payload)
-            payload.extend(crc)
-            (status, backData, _backBits) = self._to_card(
-                constants.PCD_TRANSCEIVE, payload
-            )
+            payload = self._append_crc([select_cmd, 0x70, *back_data])
+            back_data, _back_bits = self._to_card(constants.PCD_TRANSCEIVE, payload)
 
-            if status != constants.MI_OK:
-                print("status: ", status)
-                return (constants.MI_ERR, None)
+            if len(back_data) != 3:
+                raise RuntimeError
 
-            if len(backData) != 3:
-                return (constants.MI_ERR, None)
-
-            sak = backData[0]
+            sak = back_data[0]
             if (sak & 0b00000100) == 0b00000100:
                 # cascade bit set, UID not complete
                 pass
             elif (sak & 0b00100000) == 0b00100000:
                 # uid complete, ISO 14443-4 compliant
-                return (constants.MI_OK, self._combine_uid(uid_per_level))
+                return self._combine_uid(uid_per_level)
             elif (sak & 0b00000000) == 0b00000000:
                 # uid complete, not ISO 14443-4 compliant
-                return (constants.MI_OK, self._combine_uid(uid_per_level))
+                return self._combine_uid(uid_per_level)
 
         raise RuntimeError
 
-    def read_block(self, blockAddr: int) -> Optional[List[int]]:
-        recvData = []
-        recvData.append(constants.PICC_READ)
-        recvData.append(blockAddr)
-        pOut = self._calculate_crc(recvData)
-        recvData.append(pOut[0])
-        recvData.append(pOut[1])
-        (status, backData, _backLen) = self._to_card(constants.PCD_TRANSCEIVE, recvData)
-        if not (status == constants.MI_OK):
-            self.logger.error("Error while reading!")
+    def read_block(self, block_addr: int) -> List[int]:
+        recv_data = self._append_crc([constants.PICC_READ, block_addr])
+        back_data, _back_len = self._to_card(constants.PCD_TRANSCEIVE, recv_data)
 
-        if len(backData) == 16:
-            self.logger.debug("Sector " + str(blockAddr) + " " + str(backData))
-            return backData
-        else:
-            return None
+        if len(back_data) == 16:
+            self.logger.debug("Sector " + str(block_addr) + " " + str(back_data))
+            return back_data
 
-    def write_block(self, blockAddr: int, writeData: List[int]) -> None:
-        buff = []
-        buff.append(0xA2)
-        buff.append(blockAddr)
-        buff.extend(writeData)
-        crc = self._calculate_crc(buff)
-        buff.append(crc[0])
-        buff.append(crc[1])
-        (status, _backData, _backLen) = self._to_card(constants.PCD_TRANSCEIVE, buff)
-        if not (status == constants.MI_OK):
-            status = constants.MI_ERR  # lol
+        raise RuntimeError
+
+    def write_block(self, block_addr: int, write_data: List[int]) -> None:
+        buff = self._append_crc([0xA2, block_addr, *write_data])
+        _back_data, _back_len = self._to_card(constants.PCD_TRANSCEIVE, buff)
