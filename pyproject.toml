@@ -4,7 +4,12 @@ authors = [{ name = "Marc Freudenberg", email = "freudenbergmarc@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.7"
 dynamic = ["version"]
-dependencies = ["RPi.GPIO", "spidev", "ndeflib"]
+dependencies = [
+  "gpiod~=1.5.4",
+  "spidev~=3.6",
+  "ndeflib~=0.3.3",
+  "more_itertools~=9.1.0",
+]
 
 [project.urls]
 repository = "https://github.com/washed/ntag-mfrc522"
@@ -12,10 +17,13 @@ repository = "https://github.com/washed/ntag-mfrc522"
 [project.optional-dependencies]
 dev = [
   "toml~=0.10.2",
-  "twine==1.13.0",
-  "black>=23.3.0",
-  "usort>=1.0.7",
-  "ufmt>=2.1.0",
+  "twine~=1.13.0",
+  "black~=23.3.0",
+  "usort~=1.0.7",
+  "ufmt~=2.1.0",
+  "build~=0.10.0",
+  "ruff~=0.0.272",
+  "pyright~=1.1.314",
 ]
 
 [build-system]
@@ -27,3 +35,59 @@ requires = ["setuptools>=58", "setuptools_scm>=6.2", "wheel"]
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.pyright]
+include = ["ntag-mfrc522"]
+pythonVersion = "3.9.13"
+pythonPlatform = "Linux"
+reportMissingImports = "warning"
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
+
+# These flags ensure we don't mix types in collections:
+strictListInference = true
+strictDictionaryInference = true
+strictSetInference = true
+
+reportConstantRedefinition = "warning"
+reportDuplicateImport = "warning"
+reportFunctionMemberAccess = "warning"
+reportImportCycles = "warning"
+reportIncompatibleMethodOverride = "warning"
+reportIncompatibleVariableOverride = "warning"
+reportIncompleteStub = "warning"
+reportInconsistentConstructor = "warning"
+reportInvalidStubStatement = "warning"
+reportMatchNotExhaustive = "warning"
+reportMissingParameterType = "warning"
+reportMissingTypeArgument = "warning"
+reportOverlappingOverload = "warning"
+reportPrivateUsage = "warning"
+reportTypeCommentUsage = "warning"
+# reportUnknownArgumentType = "warning"
+# reportUnknownLambdaType = "warning"
+# reportUnknownMemberType = "warning"
+# reportUnknownParameterType = "warning"
+# reportUnknownVariableType = "warning"
+reportUnnecessaryCast = "warning"
+reportUnnecessaryComparison = "warning"
+reportUnnecessaryContains = "warning"
+reportUnnecessaryIsInstance = "warning"
+reportUnusedClass = "warning"
+reportUnusedImport = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
+reportUntypedBaseClass = "warning"
+reportUntypedClassDecorator = "warning"
+reportUntypedFunctionDecorator = "warning"
+reportUntypedNamedTuple = "warning"
+
+# Below this line are options that even strict mode sets to "none":
+reportShadowedImports = "warning"
+reportCallInDefaultInitializer = "warning"
+reportImplicitStringConcatenation = "warning"
+reportMissingSuperCall = "warning"
+reportPropertyTypeMismatch = "warning"
+reportUninitializedInstanceVariable = "warning"
+reportUnnecessaryTypeIgnoreComment = "warning"
+# reportUnusedCallResult = "warning"

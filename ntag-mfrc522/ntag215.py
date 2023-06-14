@@ -32,7 +32,7 @@ class NTag215:
     PAGE_COUNT = 135
     BLOCK_COUNT = PAGE_COUNT * PAGE_SIZE_BYTES / BLOCK_SIZE_BYTES
 
-    _memory: bytearray
+    _memory: bytearray = bytearray()
 
     # memory region offsets (ends are inclusive)
     UID_START = 0
@@ -91,11 +91,12 @@ class NTag215:
         if status != MI_OK:
             raise RuntimeError
 
-        print("uid: ", self.to_hex_string(uid))
+        print("uid: ", to_hex_string(uid))
 
-        for block_num in range(self.BLOCK_COUNT):
+        for block_num in range(int(self.BLOCK_COUNT)):
+            # TODO: this misses some memory, because there is half a block at the end
             block = self.mfrc522.read_block(block_num)
-            print(self.to_hex_string(block))
+            print(to_hex_string(block))
             if block:
                 self._memory.extend(block)
 
@@ -143,6 +144,7 @@ class NTag215:
         while True:
             try:
                 self._read_no_block()
+                break
             except:
                 sleep(0.2)
 
