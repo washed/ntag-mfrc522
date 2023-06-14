@@ -1,4 +1,4 @@
-from ntag215 import NTag215
+from ntag_mfrc522.ntag215 import NTag215
 
 ntag = NTag215()
 

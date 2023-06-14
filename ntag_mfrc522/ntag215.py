@@ -4,11 +4,12 @@ import io
 from time import sleep
 from typing import List
 
-# from urllib.parse import urlparse
-
-import mfrc522
 import more_itertools
 import ndef
+
+# from urllib.parse import urlparse
+
+from ntag_mfrc522.mfrc522 import MFRC522
 
 
 def get_ndef_partition(data: bytes) -> bytes:
@@ -83,7 +84,7 @@ class NTag215:
 
     def __init__(self):
         super().__init__()
-        self.mfrc522 = mfrc522.MFRC522()
+        self.mfrc522 = MFRC522()
 
     def _read_no_block(self):
         _tag_type = self.mfrc522.request_tag()

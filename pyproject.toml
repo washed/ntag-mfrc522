@@ -37,7 +37,7 @@ requires = ["setuptools>=58", "setuptools_scm>=6.2", "wheel"]
 where = ["."]
 
 [tool.pyright]
-include = ["ntag-mfrc522"]
+include = ["ntag_mfrc522"]
 pythonVersion = "3.9.13"
 pythonPlatform = "Linux"
 reportMissingImports = "warning"

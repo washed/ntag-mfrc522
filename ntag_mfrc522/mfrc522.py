@@ -1,10 +1,10 @@
 import logging
 from typing import List, Tuple
 
-import constants
-
 import gpiod
 import spidev
+
+import ntag_mfrc522.constants as constants
 
 """
 TODO
